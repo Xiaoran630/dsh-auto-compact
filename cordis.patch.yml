@@ -1,0 +1,21 @@
+# dsh-auto-compact bundle patch：用本插件全权接管上下文压缩（兼容所有模式，含 PTC）。
+# 这些 config 字段会出现在 dsh-config-editor 的插件配置表单里，可在线编辑。
+- insert:
+    - id: auto-compact
+      name: 'dsh-auto-compact'
+      config:
+        enabled: true
+        thresholdRatio: 0.6
+        retainRatio: 0.2
+        autoCompact: true
+        preservePrefix: true
+
+# 关闭内置 compaction-basic（它的 tokenMeter 路径在 PTC 模式会报错），
+# 由本插件接管自动压缩；手动压缩由对话页的「压缩」按钮提供。
+- id: compaction-basic
+  disabled: true
+
+# /compact 命令依赖 compaction-basic 提供的 ctx.compaction 服务，一并关闭，
+# 避免「waiting for compaction」的挂载告警。
+- id: command-compact
+  disabled: true

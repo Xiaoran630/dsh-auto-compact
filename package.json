@@ -1,0 +1,24 @@
+{
+  "name": "dsh-auto-compact",
+  "version": "0.1.0",
+  "description": "DSH 插件：全模式兼容的自动/手动上下文压缩（不依赖 tokenMeter，兼容 PTC 模式）",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT"
+}
