@@ -243,9 +243,10 @@ async function summarize(ctx, target, input, signal) {
     const message = finish.failure?.message || "summarization stream failed";
     throw new Error(`dsh-auto-compact: summarization ${finish.kind}: ${message}`);
   }
-  const summary = text.trim();
-  if (!summary) throw new Error("dsh-auto-compact: summarization produced no text");
-  return summary;
+  const summaryText = text.trim();
+  if (!summaryText) throw new Error("dsh-auto-compact: summarization produced no text");
+  // 返回 ContentBlock[]（与 compaction/summary 的 summary 字段契约一致）
+  return [{ type: "text", text: summaryText }];
 }
 
 /** 校验区间仍是有效的替换目标（表面在摘要期间未变化）。 */
@@ -290,17 +291,26 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
 
   try {
     const input = buildSummarizationInput(session, shadowedSeqs);
-    const summary = await summarize(ctx, target, input, signal);
+    const summaryBlocks = await summarize(ctx, target, input, signal);
+    const summaryText = summaryBlocks.map((b) => (b && b.type === "text" ? b.text : "")).join("");
 
     if (!rangeStillValid(session, start, end, shadowedSeqs)) {
       throw new Error("dsh-auto-compact: surface changed during summarization");
+    }
+
+    // 被压缩节点的 token 总数（与 measure 的 heuristicTokens 口径一致）
+    let shadowedTokenCount = 0;
+    for (const seq of shadowedSeqs) {
+      const event = session.events[seq];
+      const msg = event ? session.deriveEventMessage(event) : null;
+      shadowedTokenCount += msg ? estimateMessageTokens(msg) : 0;
     }
 
     const checkpointMessage = {
       role: "user",
       content: [
         { type: "text", text: `${CHECKPOINT_PREAMBLE}\n\n${SUMMARY_OPEN_TAG}` },
-        { type: "text", text: summary },
+        ...summaryBlocks,
         { type: "text", text: SUMMARY_CLOSE_TAG }
       ],
       source: {
@@ -314,9 +324,10 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
     const summaryEvent = session.append("compaction/summary", {
       compactionId,
       ...(sourceCommandId === undefined ? {} : { sourceCommandId }),
-      summary,
+      summary: summaryBlocks,
       shadowedRange: { start, end },
-      shadowedSeqs: [...shadowedSeqs]
+      shadowedSeqs: [...shadowedSeqs],
+      shadowedTokenCount
     });
 
     session.append("user/message", checkpointMessage, {
@@ -330,7 +341,8 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
       compactionId,
       shadowedRange: { start, end },
       shadowedSeqs,
-      shadowedTokenCount: shadowedSeqs.length
+      shadowedTokenCount,
+      summary: summaryText
     };
   } catch (error) {
     try {
@@ -386,13 +398,18 @@ async function compactNow(ctx, cfg, agent, signal, sourceCommandId) {
   const retainTokens = Math.floor(effectiveWindow * cfg.retainRatio);
   const range = selectRange(session, measurement, retainTokens);
   if (range === null) return { ok: false, message: "无可压缩的历史（No compactable history）" };
-  await compactRegion(ctx, session, range.start, range.end, agent, signal, sourceCommandId);
+  const result = await compactRegion(ctx, session, range.start, range.end, agent, signal, sourceCommandId);
   try {
     await ctx.sessions.flush(session);
   } catch {
     // 持久化 flush 失败不影响本次压缩结果
   }
-  return { ok: true, shadowed: range.shadowedSeqs.length };
+  return {
+    ok: true,
+    shadowed: result.shadowedSeqs.length,
+    shadowedTokens: result.shadowedTokenCount,
+    summary: result.summary
+  };
 }
 
 function writeJson(res, status, body) {
