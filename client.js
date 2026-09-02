@@ -71,12 +71,13 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      ctx.slots.inject("conversation.composer.dock", () =>
+      // 模型选择（conversation.input.model）左侧的紧凑控件区
+      ctx.slots.inject("conversation.input.right", () =>
         ctx.slots.register(
           {
-            name: "conversation.composer.dock",
+            name: "conversation.input.right",
             id: "auto-compact",
-            order: 10,
+            order: 0,
             label: () => "压缩"
           },
           CompactButton
