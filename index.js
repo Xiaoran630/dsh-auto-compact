@@ -406,12 +406,10 @@ async function compactIfNeeded(ctx, cfg, agent, signal) {
 /** 手动压缩：空闲时压缩，或通过按钮触发。 */
 async function compactNow(ctx, cfg, agent, signal, sourceCommandId) {
   const session = agent.session;
-  const target = resolveTarget(agent, session);
   const measurement = measure(session);
-  const contextWindow = await resolveContextWindow(ctx, target, signal);
-  const effectiveWindow = Number.isInteger(contextWindow) && contextWindow > 0 ? contextWindow : 1048576;
-  const retainTokens = Math.floor(effectiveWindow * cfg.retainRatio);
-  const range = selectRange(session, measurement, retainTokens);
+  // 手动压缩应尽可能压缩（保留最近一条工具配对平衡的消息），与官方 compactNow 的 retainTokens=0 一致。
+  // 不能用 contextWindow*retainRatio：那会要求历史超过 ~20 万 token 才"可压缩"，普通会话永远提示"无可压缩"。
+  const range = selectRange(session, measurement, 0);
   if (range === null) return { ok: false, message: "无可压缩的历史（No compactable history）" };
   const result = await compactRegion(ctx, session, range.start, range.end, agent, signal, sourceCommandId);
   try {
