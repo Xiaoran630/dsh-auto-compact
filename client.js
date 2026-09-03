@@ -28,7 +28,8 @@ window.__ModuleLoader__.load({
       return scaled(value / 1e6) + "M";
     }
 
-    function CompactButton({ sessionId }) {
+    function CompactButton({ session, sessionId }) {
+      const sid = (session && session.sessionId) || sessionId;
       const [running, setRunning] = React.useState(false);
       const [tip, setTip] = React.useState("压缩");
       const timerRef = React.useRef(null);
@@ -40,14 +41,20 @@ window.__ModuleLoader__.load({
       }, []);
 
       const compact = React.useCallback(async () => {
-        if (!sessionId || running) return;
+        if (!sid) {
+          setTip("无活动会话");
+          if (timerRef.current) clearTimeout(timerRef.current);
+          timerRef.current = setTimeout(() => setTip("压缩"), 2500);
+          return;
+        }
+        if (running) return;
         setRunning(true);
         setTip("压缩中…");
         try {
           const res = await fetch(window.location.origin + "/auto-compact/api/compact", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sessionId })
+            body: JSON.stringify({ sessionId: sid })
           });
           const data = await res.json().catch(() => ({}));
           if (res.ok && data && data.ok) {
@@ -62,7 +69,7 @@ window.__ModuleLoader__.load({
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => setTip("压缩"), 3500);
         }
-      }, [sessionId, running]);
+      }, [sid, running]);
 
       const content = running
         ? React.createElement("span", { className: "dac-spinner", "aria-hidden": true })
