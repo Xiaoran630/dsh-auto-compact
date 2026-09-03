@@ -9,7 +9,7 @@ DSH 插件：全模式兼容的**自动 / 手动上下文压缩**。
 ## 功能
 
 - **自动压缩**：在 `agent/pre-step`（轮次之间）检测压力，超过阈值自动摘要并替换较早历史；模型确认 `CONTEXT_WINDOW_EXCEEDED` 时强制压缩并重试。
-- **手动压缩**：模型选择器左侧的图标按钮，点击展开面板（上下文用量明细 +「压缩」按钮 + 压缩结果）。压缩中按钮显示转圈动画，完成后恢复。
+- **手动压缩**：模型选择器左侧的图标按钮，点击直接压缩（转圈动画），结果在对话中显示为可展开的压缩节点（已压缩 N 条 + 摘要），与 `/compact` 命令效果一致。
 - **不依赖 tokenMeter**：自实现字符级 token 估算 + 摘要 + 表面区间替换，避免 PTC 模式下的 `imageRequestPricing` 报错。
 - 复用 `dsh-session` 内置的 `compaction/start`、`compaction/summary`、`compaction/end` 事件，因此压缩节点在对话/轨迹 UI 里正常展示。
 
@@ -57,5 +57,5 @@ dsh plugin --profile desktop add link:./dsh-auto-compact
 ## 文件结构
 
 - `index.js` — 宿主插件：配置解析、压力测量、摘要、压缩事务、自动触发、手动 HTTP 端点。
-- `client.js` — 客户端插件：`conversation.input.right`（模型选择左侧）里的图标按钮 + 上下文用量/压缩面板。
+- `client.js` — 客户端插件：`conversation.input.right`（模型选择左侧）里的图标压缩按钮。
 - `cordis.patch.yml` — 挂载本插件并禁用内置 compaction-basic / command-compact。
