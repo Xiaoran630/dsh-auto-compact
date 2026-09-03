@@ -204,8 +204,19 @@ function resolveTarget(agent, session) {
   return undefined;
 }
 
+/** 当前打开中的 turn 编号；无打开 turn（空闲期）返回 null。 */
+function currentOpenTurn(session) {
+  const events = session.events;
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const type = events[i].type;
+    if (type === "turn/start") return events[i].data.turn;
+    if (type === "turn/end") return null;
+  }
+  return null;
+}
+
 /** 通过一次直接 LLM 调用生成摘要文本（不依赖 agent 的工具呈现模式，兼容 PTC）。 */
-async function summarize(ctx, target, input, signal) {
+async function summarize(ctx, target, input, sessionId, signal) {
   const messages = [
     ...input.messages,
     {
@@ -221,6 +232,7 @@ async function summarize(ctx, target, input, signal) {
     ...(input.system === undefined ? {} : { system: input.system }),
     ...(input.tools === undefined ? {} : { tools: [...input.tools] }),
     maxTokens: SUMMARY_MAX_TOKENS,
+    ...(sessionId === undefined ? {} : { sessionId }),
     purpose: "compaction",
     ...(signal === undefined ? {} : { signal })
   };
@@ -283,15 +295,17 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
     throw new Error("dsh-auto-compact: no provider/model available for summarization");
   }
   const compactionId = randomUUID();
-
-  const startEvent = session.append("compaction/start", {
+  const lifecycle = {
     compactionId,
-    ...(sourceCommandId === undefined ? {} : { sourceCommandId })
-  });
+    ...(sourceCommandId === undefined ? {} : { sourceCommandId }),
+    turn: currentOpenTurn(session)
+  };
+
+  const startEvent = session.append("compaction/start", lifecycle);
 
   try {
     const input = buildSummarizationInput(session, shadowedSeqs);
-    const summaryBlocks = await summarize(ctx, target, input, signal);
+    const summaryBlocks = await summarize(ctx, target, input, session.id, signal);
     const summaryText = summaryBlocks.map((b) => (b && b.type === "text" ? b.text : "")).join("");
 
     if (!rangeStillValid(session, start, end, shadowedSeqs)) {
@@ -307,6 +321,7 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
     }
 
     const checkpointMessage = {
+      id: randomUUID(),
       role: "user",
       content: [
         { type: "text", text: `${CHECKPOINT_PREAMBLE}\n\n${SUMMARY_OPEN_TAG}` },
@@ -335,7 +350,7 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
       sourceEventSeqs: [startEvent.seq, summaryEvent.seq, ...shadowedSeqs]
     });
 
-    session.append("compaction/end", { compactionId });
+    session.append("compaction/end", lifecycle);
 
     return {
       compactionId,
@@ -347,7 +362,7 @@ async function compactRegion(ctx, session, start, end, agent, signal, sourceComm
   } catch (error) {
     try {
       session.append("compaction/end", {
-        compactionId,
+        ...lifecycle,
         error: error instanceof Error ? error.message : String(error)
       });
     } catch {
